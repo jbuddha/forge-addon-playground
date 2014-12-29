@@ -5,11 +5,14 @@ import org.jboss.forge.addon.parser.java.resources.JavaResource;
 import org.jboss.forge.addon.parser.java.resources.JavaResourceVisitor;
 import org.jboss.forge.addon.projects.Project;
 import org.jboss.forge.addon.projects.ProjectFactory;
+import org.jboss.forge.addon.projects.facets.ResourcesFacet;
 import org.jboss.forge.addon.projects.ui.AbstractProjectCommand;
+import org.jboss.forge.addon.resource.FileResource;
 import org.jboss.forge.addon.resource.visit.VisitContext;
 import org.jboss.forge.addon.ui.context.UIBuilder;
 import org.jboss.forge.addon.ui.context.UIContext;
 import org.jboss.forge.addon.ui.context.UIExecutionContext;
+import org.jboss.forge.addon.ui.context.UIValidationContext;
 import org.jboss.forge.addon.ui.hints.InputType;
 import org.jboss.forge.addon.ui.input.InputComponent;
 import org.jboss.forge.addon.ui.input.UICompleter;
@@ -19,11 +22,13 @@ import org.jboss.forge.addon.ui.metadata.WithAttributes;
 import org.jboss.forge.addon.ui.result.Result;
 import org.jboss.forge.addon.ui.result.Results;
 import org.jboss.forge.addon.ui.util.Metadata;
+import org.jboss.forge.addon.ui.validate.UIValidator;
 import org.jboss.forge.roaster.model.source.JavaClassSource;
 import org.jboss.forge.roaster.model.source.JavaSource;
 
 import javax.batch.api.chunk.*;
 import javax.inject.Inject;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.Serializable;
 import java.util.HashSet;
@@ -42,8 +47,9 @@ public class BatchNewJobXmlCommand extends AbstractProjectCommand {
     @WithAttributes(label = "ItemWriter", type = InputType.JAVA_CLASS_PICKER)
     UIInput<String> writer;
 
-//    @Inject
-//    UIInput<String> changeTester;
+    @Inject
+    @WithAttributes(label = "JobXML")
+    UIInput<String> jobXml;
 
     @Inject
     ProjectFactory projectFactory;
@@ -59,14 +65,37 @@ public class BatchNewJobXmlCommand extends AbstractProjectCommand {
         reader.setCompleter(new StringUICompleter(ItemReader.class, AbstractItemReader.class));
         writer.setCompleter(new StringUICompleter(ItemWriter.class, AbstractItemWriter.class));
         processor.setCompleter(new StringUICompleter(ItemProcessor.class, null));
+
+        jobXml.addValidator(new UIValidator() {
+            @Override
+            public void validate(UIValidationContext context) {
+                String jobXmlValue = (String) context.getCurrentInputComponent().getValue();
+
+                FileResource<?> fileResource = getBatchXmlResource(context.getUIContext());
+
+                if(fileResource.exists()){
+                    context.addValidationError(context.getCurrentInputComponent(),fileResource.getFullyQualifiedName()+" already exists");
+                }
+            }
+        });
+
         builder.add(reader)
                 .add(processor)
-                .add(writer);
-//                .add(changeTester);
+                .add(writer)
+                .add(jobXml);
+    }
+
+    private FileResource<?> getBatchXmlResource(UIContext context) {
+        ResourcesFacet resourcesFacet = getSelectedProject(context).getFacet(ResourcesFacet.class);
+
+        return resourcesFacet.getResource("META-INF" + File.separator + "batch-jobs" + File.separator + "jobXmlValue");
     }
 
     @Override
     public Result execute(UIExecutionContext context) throws Exception {
+
+        getBatchXmlResource(context.getUIContext());
+
         return Results
                 .success("Command 'Batch New Job Xml' successfully executed!");
     }
