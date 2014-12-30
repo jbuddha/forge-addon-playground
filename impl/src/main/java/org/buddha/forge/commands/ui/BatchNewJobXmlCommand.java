@@ -34,7 +34,6 @@ import org.jboss.forge.roaster.model.JavaType;
 import org.jboss.forge.roaster.model.source.JavaClassSource;
 import org.jboss.forge.roaster.model.source.JavaSource;
 import org.jboss.forge.roaster.model.util.Strings;
-import org.jboss.shrinkwrap.descriptor.api.Descriptor;
 import org.jboss.shrinkwrap.descriptor.api.Descriptors;
 import org.jboss.shrinkwrap.descriptor.api.batchXML10.BatchXMLDescriptor;
 
@@ -44,7 +43,6 @@ import javax.inject.Named;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.Serializable;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -94,7 +92,7 @@ public class BatchNewJobXmlCommand extends AbstractProjectCommand {
             public void validate(UIValidationContext context) {
                 String jobXmlValue = (String) context.getCurrentInputComponent().getValue();
 
-                FileResource<?> fileResource = getBatchXmlResource(context.getUIContext());
+                FileResource<?> fileResource = getBatchXmlResource(context.getUIContext(), jobXml.getValue());
 
                 if(fileResource.exists()){
                     context.addValidationError(context.getCurrentInputComponent(),fileResource.getFullyQualifiedName()+" already exists");
@@ -108,19 +106,19 @@ public class BatchNewJobXmlCommand extends AbstractProjectCommand {
                 .add(jobXml);
     }
 
-    private FileResource<?> getBatchXmlResource(UIContext context) {
+    private FileResource<?> getBatchXmlResource(UIContext context, String value) {
         ResourcesFacet resourcesFacet = getSelectedProject(context).getFacet(ResourcesFacet.class);
 
-        return resourcesFacet.getResource("META-INF" + File.separator + "batch-jobs" + File.separator + "jobXmlValue");
+        return resourcesFacet.getResource("META-INF" + File.separator + "batch-jobs" + File.separator + value);
     }
 
     @Override
     public Result execute(UIExecutionContext context)  {
 
-        FileResource<?> jobXmlResource = getBatchXmlResource(context.getUIContext());
+        FileResource<?> jobXmlResource = getBatchXmlResource(context.getUIContext(),jobXml.getValue());
         BatchXMLDescriptor descriptor = Descriptors.create(BatchXMLDescriptor.class);
 
-        Resource<URL> templateJobXml = resourceFactory.create(getClass().getResource("templates" + File.separator + "job.ftl")).reify(URLResource.class);
+        Resource<URL> templateJobXml = resourceFactory.create(getClass().getResource("/templates" + File.separator + "job.ftl")).reify(URLResource.class);
         Template template = templateFactory.create(templateJobXml, FreemarkerTemplate.class);
 
         Map<String, Object> templateContext = new HashMap<String,Object>();
@@ -129,6 +127,10 @@ public class BatchNewJobXmlCommand extends AbstractProjectCommand {
             String writerName = getCDIBeanName(context, writer.getValue());
             String processorName = getCDIBeanName(context, processor.getValue());
 
+            templateContext.put("readerBeanName",readerName);
+            templateContext.put("writerBeanName",writerName);
+            templateContext.put("processorBeanName",processorName);
+            jobXmlResource.createNewFile();
             jobXmlResource.setContents(template.process(templateContext));
         }catch (IOException e){
             return Results.fail(e.getMessage(),e);
@@ -144,7 +146,7 @@ public class BatchNewJobXmlCommand extends AbstractProjectCommand {
         JavaType<?> javaType = javaResource.getJavaType();
         Annotation<? extends JavaType<?>> named = javaType.getAnnotation(Named.class);
 
-        if(named.getStringValue() != null){
+        if(named != null){
             return named.getStringValue();
         }
         return Strings.uncapitalize(javaType.getName());
