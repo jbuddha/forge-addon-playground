@@ -8,7 +8,13 @@ import org.jboss.forge.addon.projects.ProjectFactory;
 import org.jboss.forge.addon.projects.facets.ResourcesFacet;
 import org.jboss.forge.addon.projects.ui.AbstractProjectCommand;
 import org.jboss.forge.addon.resource.FileResource;
+import org.jboss.forge.addon.resource.Resource;
+import org.jboss.forge.addon.resource.ResourceFactory;
+import org.jboss.forge.addon.resource.URLResource;
 import org.jboss.forge.addon.resource.visit.VisitContext;
+import org.jboss.forge.addon.templates.Template;
+import org.jboss.forge.addon.templates.TemplateFactory;
+import org.jboss.forge.addon.templates.freemarker.FreemarkerTemplate;
 import org.jboss.forge.addon.ui.context.UIBuilder;
 import org.jboss.forge.addon.ui.context.UIContext;
 import org.jboss.forge.addon.ui.context.UIExecutionContext;
@@ -23,15 +29,26 @@ import org.jboss.forge.addon.ui.result.Result;
 import org.jboss.forge.addon.ui.result.Results;
 import org.jboss.forge.addon.ui.util.Metadata;
 import org.jboss.forge.addon.ui.validate.UIValidator;
+import org.jboss.forge.roaster.model.Annotation;
+import org.jboss.forge.roaster.model.JavaType;
 import org.jboss.forge.roaster.model.source.JavaClassSource;
 import org.jboss.forge.roaster.model.source.JavaSource;
+import org.jboss.forge.roaster.model.util.Strings;
+import org.jboss.shrinkwrap.descriptor.api.Descriptor;
+import org.jboss.shrinkwrap.descriptor.api.Descriptors;
+import org.jboss.shrinkwrap.descriptor.api.batchXML10.BatchXMLDescriptor;
 
 import javax.batch.api.chunk.*;
 import javax.inject.Inject;
+import javax.inject.Named;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.Serializable;
+import java.net.URL;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 public class BatchNewJobXmlCommand extends AbstractProjectCommand {
@@ -53,6 +70,12 @@ public class BatchNewJobXmlCommand extends AbstractProjectCommand {
 
     @Inject
     ProjectFactory projectFactory;
+
+    @Inject
+    TemplateFactory templateFactory;
+
+    @Inject
+    ResourceFactory resourceFactory;
 
     @Override
     public UICommandMetadata getMetadata(UIContext context) {
@@ -92,13 +115,41 @@ public class BatchNewJobXmlCommand extends AbstractProjectCommand {
     }
 
     @Override
-    public Result execute(UIExecutionContext context) throws Exception {
+    public Result execute(UIExecutionContext context)  {
 
-        getBatchXmlResource(context.getUIContext());
+        FileResource<?> jobXmlResource = getBatchXmlResource(context.getUIContext());
+        BatchXMLDescriptor descriptor = Descriptors.create(BatchXMLDescriptor.class);
 
-        return Results
-                .success("Command 'Batch New Job Xml' successfully executed!");
+        Resource<URL> templateJobXml = resourceFactory.create(getClass().getResource("templates" + File.separator + "job.ftl")).reify(URLResource.class);
+        Template template = templateFactory.create(templateJobXml, FreemarkerTemplate.class);
+
+        Map<String, Object> templateContext = new HashMap<String,Object>();
+        try {
+            String readerName = getCDIBeanName(context, reader.getValue());
+            String writerName = getCDIBeanName(context, writer.getValue());
+            String processorName = getCDIBeanName(context, processor.getValue());
+
+            jobXmlResource.setContents(template.process(templateContext));
+        }catch (IOException e){
+            return Results.fail(e.getMessage(),e);
+        }
+        return Results.success("Command 'Batch New Job Xml' successfully executed!");
     }
+
+    private String getCDIBeanName(UIExecutionContext context, String value) throws FileNotFoundException {
+
+        Project project = getSelectedProject(context);
+        JavaSourceFacet facet = project.getFacet(JavaSourceFacet.class);
+        JavaResource javaResource = facet.getJavaResource(value);
+        JavaType<?> javaType = javaResource.getJavaType();
+        Annotation<? extends JavaType<?>> named = javaType.getAnnotation(Named.class);
+
+        if(named.getStringValue() != null){
+            return named.getStringValue();
+        }
+        return Strings.uncapitalize(javaType.getName());
+    }
+
 
     @Override
     protected boolean isProjectRequired() {
